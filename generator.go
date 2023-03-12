@@ -56,13 +56,10 @@ func (g *Generator) Generate(data *ifacetool.Data) (*generator.File, error) {
 				}
 				return
 			},
-			"exprString": func(methodName, paramName string, paramType types.Type) string {
-				schema := schemas[methodName][paramName]
-				if schema == "" {
-					// No schema specified, return a no-op validation rule.
-					return "v.All()"
-				}
-
+			"methodSchema": func(methodName string) map[string]string {
+				return schemas[methodName]
+			},
+			"exprString": func(schema, paramName string, paramType types.Type) string {
 				validator, err := expr.Parse(schema)
 				if err != nil {
 					panic(err)

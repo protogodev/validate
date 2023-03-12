@@ -36,17 +36,24 @@ type validateMiddleware struct {
 
 {{- range $.Data.Methods}}
 {{- $methodName := .Name}}
+{{- $methodSchema := methodSchema $methodName}}
 
 func (mw validateMiddleware) {{$methodName}}({{.ArgList}}) {{.ReturnArgTypeList}} {
+	{{- if $methodSchema}}
 	schema := v.Schema{
 		{{- range nonCtxParams .Params}}
-		v.F("{{.Name}}", {{.Name}}): {{exprString $methodName .Name .Type}},
-		{{- end}}
+		{{- $schema := index $methodSchema .Name}}
+		{{- if $schema}}
+		v.F("{{.Name}}", {{.Name}}): {{exprString $schema .Name .Type}},
+		{{- end}} {{/* if $schema */}}
+		{{- end}} {{/* range nonCtxParams .Params */}}
 	}
 
 	if err := v.Validate(schema); err != nil {
 		return {{returnErr .Returns "mw.wrap(%s)"}}
 	}
+
+	{{end}} {{/* if $methodSchema */ -}}
 
 	return mw.next.{{.Name}}({{.CallArgList}})
 }
