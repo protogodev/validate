@@ -7,19 +7,21 @@ import (
 	"go/token"
 	"go/types"
 	"strings"
+
+	"github.com/protogodev/validate/decl"
 )
 
 const (
-	DefaultQualifier = "validating"
+	DefaultQualifier = "v"
 )
 
-type Validator interface {
-	// SetQualifier sets the validator's qualifier to q.
-	SetQualifier(q string)
+type Param struct {
+	Name string
+	Type types.Type
+}
 
-	// ConvertName convert the validator's name (recursively) by applying
-	// the corresponding converter to each validator.
-	ConvertName(converters map[string]Converter, typ types.Type) error
+type Validator interface {
+	Bind(param Param, decls map[string][]*decl.Validator) error
 
 	// ExprString returns the validating-style expression string.
 	ExprString() string
@@ -27,42 +29,89 @@ type Validator interface {
 
 // LeafValidator is an expression that represents a leaf validator.
 type LeafValidator struct {
-	Qualifier string
-	Name      string
-	Type      string
-	Args      []string
-	Msg       string
+	Name string
+	Args []string
+	Msg  string
+
+	Param Param
+	Decls []*decl.Validator
 }
 
-func (v *LeafValidator) SetQualifier(q string) {
-	v.Qualifier = q
-}
+func (v *LeafValidator) Bind(param Param, decls map[string][]*decl.Validator) error {
+	v.Param = param
+	v.Decls = decls[v.Name]
 
-func (v *LeafValidator) ConvertName(converters map[string]Converter, typ types.Type) error {
-	convert, ok := converters[v.Name]
-	if !ok {
-		return fmt.Errorf("found no converter for %q", v.Name)
-	}
-
-	name, err := convert(v.Name, typ)
-	if err != nil {
-		return err
-	}
-
-	v.Name = name
-	return nil
+	return v.validate()
 }
 
 func (v *LeafValidator) ExprString() string {
+	qualifiedName := v.buildQualifiedName()
+
 	args := strings.Join(v.Args, ", ")
-	if strings.ToLower(v.Name) == "match" {
+	if v.Name == "match" {
 		args = fmt.Sprintf("regexp.MustCompile(%s)", args)
 	}
 
 	if v.Msg == "" {
-		return fmt.Sprintf("%s.%s(%s)", v.Qualifier, v.Name, args)
+		return fmt.Sprintf("%s(%s)", qualifiedName, args)
 	}
-	return fmt.Sprintf("%s.%s(%s).Msg(%s)", v.Qualifier, v.Name, args, v.Msg)
+	return fmt.Sprintf("%s(%s).Msg(%s)", qualifiedName, args, v.Msg)
+}
+
+func (v *LeafValidator) validate() error {
+	// Special case for validator `_`.
+	if v.Name == "_" {
+		if !decl.IsStruct(v.Param.Type) {
+			return fmt.Errorf("cannot use validator `%s` on type %T", v.Name, v.Param.Type.Underlying())
+		}
+		return nil
+	}
+
+	if len(v.Decls) == 0 {
+		return fmt.Errorf("unrecognized validator %q", v.Name)
+	}
+
+	// Try to find the first matched declaration.
+	idx := -1
+	for i, d := range v.Decls {
+		if d.AllowedTypes.Allow(v.Param.Type) {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		// Found no match, return an error.
+		return fmt.Errorf("cannot use validator `%s` on type %T", v.Name, v.Param.Type.Underlying())
+	}
+
+	// Apply the argument number constraint from the above matched declaration.
+	d := v.Decls[idx]
+	if !d.ArgNum.Contain(len(v.Args)) {
+		return fmt.Errorf("wrong number of arguments for validator %q", v.Name)
+	}
+
+	return nil
+}
+
+func (v *LeafValidator) buildQualifiedName() string {
+	// Special case for validator `_`.
+	if v.Name == "_" {
+		return v.Param.Name + ".Schema"
+	}
+
+	for _, d := range v.Decls {
+		if d.AllowedTypes.Allow(v.Param.Type) {
+			// Return the qualified name of the first matched declaration.
+
+			name := d.Qualifier + "." + d.Name
+			if d.IsGeneric {
+				name += "[" + v.Param.Type.String() + "]"
+			}
+			return name
+		}
+	}
+
+	return ""
 }
 
 // LogicValidator is an expression that represents a logic validator (i.e. `Not`, `And/All` or `Or/Any`).
@@ -73,40 +122,36 @@ type LogicValidator struct {
 	Right     Validator // `Not` has no Right validator.
 }
 
-func (v *LogicValidator) SetQualifier(q string) {
-	v.Qualifier = q
-	v.Left.SetQualifier(q)
-	if v.Right != nil {
-		v.Right.SetQualifier(q)
-	}
-}
-
-func (v *LogicValidator) ConvertName(converters map[string]Converter, typ types.Type) error {
-	switch v.Name {
-	case "!":
-		v.Name = "Not"
-	case "&&":
-		v.Name = "All"
-	case "||":
-		v.Name = "Any"
-	}
-
-	if err := v.Left.ConvertName(converters, typ); err != nil {
+func (v *LogicValidator) Bind(param Param, decls map[string][]*decl.Validator) error {
+	if err := v.Left.Bind(param, decls); err != nil {
 		return err
 	}
-
 	if v.Right != nil {
-		return v.Right.ConvertName(converters, typ)
+		return v.Right.Bind(param, decls)
 	}
-
 	return nil
 }
 
 func (v *LogicValidator) ExprString() string {
+	qualifiedName := v.buildQualifiedName()
+
 	if v.Right != nil {
-		return fmt.Sprintf("%s.%s(%s, %s)", v.Qualifier, v.Name, v.Left.ExprString(), v.Right.ExprString())
+		return fmt.Sprintf("%s(%s, %s)", qualifiedName, v.Left.ExprString(), v.Right.ExprString())
 	}
-	return fmt.Sprintf("%s.%s(%s)", v.Qualifier, v.Name, v.Left.ExprString())
+	return fmt.Sprintf("%s(%s)", qualifiedName, v.Left.ExprString())
+}
+
+func (v *LogicValidator) buildQualifiedName() string {
+	switch v.Name {
+	case "!":
+		return v.Qualifier + ".Not"
+	case "&&":
+		return v.Qualifier + ".All"
+	case "||":
+		return v.Qualifier + ".Any"
+	}
+
+	return ""
 }
 
 func Parse(s string) (Validator, error) {
@@ -138,8 +183,8 @@ func (p Parser) Parse(e ast.Expr) (Validator, error) {
 				return nil, err
 			}
 			return &LogicValidator{
-				Name:      "!",
 				Qualifier: DefaultQualifier,
+				Name:      "!",
 				Left:      x,
 			}, nil
 		}
@@ -187,8 +232,7 @@ func (p Parser) Parse(e ast.Expr) (Validator, error) {
 		// a
 		// _
 		return &LeafValidator{
-			Qualifier: DefaultQualifier,
-			Name:      expr.Name,
+			Name: expr.Name,
 		}, nil
 
 	case *ast.CallExpr:
@@ -204,9 +248,8 @@ func (p Parser) Parse(e ast.Expr) (Validator, error) {
 				args = append(args, argValue)
 			}
 			return &LeafValidator{
-				Qualifier: DefaultQualifier,
-				Name:      fun.Name,
-				Args:      args,
+				Name: fun.Name,
+				Args: args,
 			}, nil
 
 		case *ast.SelectorExpr:
@@ -218,9 +261,8 @@ func (p Parser) Parse(e ast.Expr) (Validator, error) {
 					return nil, err
 				}
 				return &LeafValidator{
-					Qualifier: DefaultQualifier,
-					Name:      x.Name,
-					Msg:       msg,
+					Name: x.Name,
+					Msg:  msg,
 				}, nil
 
 			case *ast.CallExpr:
@@ -245,10 +287,9 @@ func (p Parser) Parse(e ast.Expr) (Validator, error) {
 				}
 
 				return &LeafValidator{
-					Qualifier: DefaultQualifier,
-					Name:      ident.Name,
-					Args:      args,
-					Msg:       msg,
+					Name: ident.Name,
+					Args: args,
+					Msg:  msg,
 				}, nil
 
 			default:

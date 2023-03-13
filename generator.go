@@ -1,8 +1,10 @@
 package validate
 
 import (
+	_ "embed"
 	"fmt"
 	"go/types"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -10,8 +12,12 @@ import (
 	"github.com/protogodev/protogo/generator"
 	"github.com/protogodev/protogo/parser"
 	"github.com/protogodev/protogo/parser/ifacetool"
+	"github.com/protogodev/validate/decl"
 	"github.com/protogodev/validate/expr"
 )
+
+//go:embed template.go.tmpl
+var template string
 
 func init() {
 	protogocmd.MustRegister(&protogocmd.Plugin{
@@ -23,6 +29,7 @@ func init() {
 type Generator struct {
 	OutDir    string `name:"out" default:"." help:"output directory"`
 	Formatted bool   `name:"fmt" default:"true" help:"whether to make the generated code formatted"`
+	Custom    string `name:"custom" help:"the declaration file of custom validators"`
 }
 
 func (g *Generator) PkgName() string {
@@ -30,10 +37,19 @@ func (g *Generator) PkgName() string {
 }
 
 func (g *Generator) Generate(data *ifacetool.Data) (*generator.File, error) {
+	customDecls, err := getCustomDecls(g.Custom)
+	if err != nil {
+		return nil, err
+	}
+
+	completeDecls, imports := buildCompleteDecls(customDecls)
+
 	tmplData := struct {
-		Data *ifacetool.Data
+		Imports []ifacetool.Import
+		Data    *ifacetool.Data
 	}{
-		Data: data,
+		Imports: imports,
+		Data:    data,
 	}
 
 	schemas := make(map[string]map[string]string)
@@ -46,7 +62,7 @@ func (g *Generator) Generate(data *ifacetool.Data) (*generator.File, error) {
 		schemas[method.Name] = m
 	}
 
-	return generator.Generate(Template, tmplData, generator.Options{
+	return generator.Generate(template, tmplData, generator.Options{
 		Funcs: map[string]interface{}{
 			"nonCtxParams": func(params []*ifacetool.Param) (out []*ifacetool.Param) {
 				for _, p := range params {
@@ -64,15 +80,16 @@ func (g *Generator) Generate(data *ifacetool.Data) (*generator.File, error) {
 				if err != nil {
 					panic(err)
 				}
-				if err := validator.ConvertName(expr.DefaultConverters, paramType); err != nil {
+
+				param := expr.Param{
+					Name: paramName,
+					Type: paramType,
+				}
+				if err := validator.Bind(param, completeDecls); err != nil {
 					panic(err)
 				}
 
-				validator.SetQualifier("v")
-				s := validator.ExprString()
-				// Replace the special validator `_` with the parameter's name.
-				s = strings.Replace(s, "v._", paramName, 1)
-				return s
+				return validator.ExprString()
 			},
 			"returnErr": func(params []*ifacetool.Param, errFormat string) string {
 				var returns []string
@@ -87,6 +104,54 @@ func (g *Generator) Generate(data *ifacetool.Data) (*generator.File, error) {
 		Formatted:      g.Formatted,
 		TargetFileName: filepath.Join(g.OutDir, "validate_gen.go"),
 	})
+}
+
+func getCustomDecls(filename string) (string, error) {
+	if filename == "" {
+		return "", nil
+	}
+
+	b, err := os.ReadFile(filename)
+	if err != nil {
+		return "", err
+	}
+
+	return string(b), nil
+}
+
+func buildCompleteDecls(customDecls string) (map[string][]*decl.Validator, []ifacetool.Import) {
+	builtin, err := decl.Parse(decl.BuiltinDecls)
+	if err != nil {
+		panic(err)
+	}
+
+	custom, err := decl.Parse(customDecls)
+	if err != nil {
+		panic(err)
+	}
+
+	decls := make(map[string][]*decl.Validator)
+	imports := make(map[string]string)
+
+	for _, d := range builtin {
+		decls[d.Alias] = append(decls[d.Alias], d)
+		imports[d.Qualifier] = d.Import
+	}
+	for _, d := range custom {
+		decls[d.Alias] = append(decls[d.Alias], d)
+		imports[d.Qualifier] = d.Import
+	}
+
+	var importList []ifacetool.Import
+	for alias, path := range imports {
+		importList = append(importList, ifacetool.Import{
+			Alias: alias,
+			Path:  path,
+		})
+
+	}
+
+	return decls, importList
 }
 
 func emptyValue(param *ifacetool.Param) string {
