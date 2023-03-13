@@ -31,10 +31,11 @@ Arguments:
   <interface-name>    interface name
 
 Flags:
-  -h, --help       Show context-sensitive help.
+  -h, --help             Show context-sensitive help.
 
-      --out="."    output directory
-      --fmt        whether to make the generated code formatted
+      --out="."          output directory
+      --fmt              whether to make the generated code formatted
+      --custom=STRING    the declaration file of custom validators
 ```
 </details>
 
@@ -42,26 +43,29 @@ Flags:
 ## Validation Syntax
 
 
-| Operator / Validator | Validating Equivalent(s)                                                                                                                                    | Example            |
-|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------|
-| `!`                  | [Not](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Not)                                                                                           | `!lt(0)`           |
-| `&&`                 | [All / And](https://pkg.go.dev/github.com/RussellLuo/validating/v3#All)                                                                                     | `gt(0) && lt(10)`  | 
-| `\|\|`               | [Any / Or](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Any)                                                                                      | `eq(0) \|\| eq(1)` |
-| `nonzero`            | [Nonzero](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Nonzero)                                                                                   | `nonzero`          | 
-| `zero`               | [Zero](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Zero)                                                                                         | `zero`             | 
-| `len`                | [LenString](https://pkg.go.dev/github.com/RussellLuo/validating/v3#LenString) / [LenSlice](https://pkg.go.dev/github.com/RussellLuo/validating/v3#LenSlice) | `len(0, 10)`       | 
-| `runecount`          | [RuneCount](https://pkg.go.dev/github.com/RussellLuo/validating/v3#RuneCount)                                                                               | `runecount(0, 10)` |
-| `eq`                 | [Eq](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Eq)                                                                                             | `eq(1)`            |
-| `ne`                 | [Ne](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Ne)                                                                                             | `ne(2)`            |
-| `gt`                 | [Gt](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Gt)                                                                                             | `gt(0)`            |
-| `gte`                | [Gte](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Gte)                                                                                           | `gte(0)`           |
-| `lt`                 | [Lt](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Lt)                                                                                             | `lt(10)`           |
-| `lte`                | [Lte](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Lte)                                                                                           | `lte(10)`          |
-| `xrange`             | [Range](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Range)                                                                                       | `xrange(0, 10)`    |
-| `in`                 | [In](https://pkg.go.dev/github.com/RussellLuo/validating/v3#In)                                                                                             | `in(0, 1)`         |
-| `nin`                | [Nin](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Nin)                                                                                           | `nin("Y", "N")`    |
-| `match`              | [Match](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Match)                                                                                       | ``match(`^\w+$`)`` |
-| `_`                  | A special validator that means to use the nested `Schema()` of the struct argument.                                                                         | `_`                |
+| Operator / Validator | Validating / Vext Equivalent(s)                                                                                                                             | Example                             |
+|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------|
+| `!`                  | [Not](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Not)                                                                                           | `!lt(0)`                            |
+| `&&`                 | [All / And](https://pkg.go.dev/github.com/RussellLuo/validating/v3#All)                                                                                     | `gt(0) && lt(10)`                   |
+| `\|\|`               | [Any / Or](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Any)                                                                                      | `eq(0) \|\| eq(1)`                  |
+| `nonzero`            | [Nonzero](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Nonzero)                                                                                   | `nonzero`                           |
+| `zero`               | [Zero](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Zero)                                                                                         | `zero`                              |
+| `len`                | [LenString](https://pkg.go.dev/github.com/RussellLuo/validating/v3#LenString) / [LenSlice](https://pkg.go.dev/github.com/RussellLuo/validating/v3#LenSlice) | `len(0, 10)`                        |
+| `runecnt`            | [RuneCount](https://pkg.go.dev/github.com/RussellLuo/validating/v3#RuneCount)                                                                               | `runecnt(0, 10)`                    |
+| `eq`                 | [Eq](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Eq)                                                                                             | `eq(1)`                             |
+| `ne`                 | [Ne](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Ne)                                                                                             | `ne(2)`                             |
+| `gt`                 | [Gt](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Gt)                                                                                             | `gt(0)`                             |
+| `gte`                | [Gte](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Gte)                                                                                           | `gte(0)`                            |
+| `lt`                 | [Lt](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Lt)                                                                                             | `lt(10)`                            |
+| `lte`                | [Lte](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Lte)                                                                                           | `lte(10)`                           |
+| `xrange`             | [Range](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Range)                                                                                       | `xrange(0, 10)`                     |
+| `in`                 | [In](https://pkg.go.dev/github.com/RussellLuo/validating/v3#In)                                                                                             | `in(0, 1)`                          |
+| `nin`                | [Nin](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Nin)                                                                                           | `nin("Y", "N")`                     |
+| `match`              | [Match](https://pkg.go.dev/github.com/RussellLuo/validating/v3#Match)                                                                                       | ``match(`^\w+$`)``                  |
+| `email`              | [Email](https://pkg.go.dev/github.com/RussellLuo/vext#Email)                                                                                                | `email`                             |
+| `ip`                 | [IP](https://pkg.go.dev/github.com/RussellLuo/vext#IP)                                                                                                      | `ip`                                |
+| `time`               | [Time](https://pkg.go.dev/github.com/RussellLuo/vext#Time)                                                                                                  | `time("2006-01-02T15:04:05Z07:00")` |
+| `_`                  | A special validator that means to use the nested `Schema()` of the struct argument.                                                                         | `_`                                 |
 
 
 ## Examples
