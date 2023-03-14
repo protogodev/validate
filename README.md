@@ -40,6 +40,61 @@ Flags:
 </details>
 
 
+## Quick Start
+
+**NOTE**: The following code is located in [helloworld](examples/helloworld).
+
+1. Define the interface
+
+    ```go
+    type Service interface {
+        SayHello(ctx context.Context, name string) (message string, err error)
+    }
+    ```
+
+2. Implement the service
+
+    ```go
+    type Greeter struct{}
+
+    func (g *Greeter) SayHello(ctx context.Context, name string) (string, error) {
+        return "Hello " + name, nil
+    }
+    ```
+
+3. Add the validation annotations
+
+    ```go
+    type Service interface {
+        // @schema:
+        //   name: len(0, 10) && match(`^\w+$`)
+        SayHello(ctx context.Context, name string) (message string, err error)
+    }
+    ```
+
+4. Generate the validation middleware
+
+    ```bash
+    $ cd examples/helloworld
+    $ protogo validate ./service.go Service
+    ```
+
+5. Use the middleware for input validation
+
+    ```go
+    func main() {
+        var svc helloworld.Service = &helloworld.Greeter{}
+        svc = helloworld.ValidateMiddleware(nil)(svc)
+
+        message, err = svc.SayHello(context.Background(), "!Tracey")
+        fmt.Printf("message: %q, err: %v\n", message, err)
+
+        // Output:
+        // message: "", err: name: INVALID(invalid format)
+    }
+    ```
+
+
 ## Validation Syntax
 
 
